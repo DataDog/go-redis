@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DataDog/go-redis/internal/pool"
+	"github.com/go-redis/redis/internal/pool"
 )
 
 type poolGetPutBenchmark struct {

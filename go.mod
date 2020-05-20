@@ -1,4 +1,4 @@
-module github.com/DataDog/go-redis
+module github.com/go-redis/redis
 
 require (
 	github.com/golang/protobuf v1.3.2 // indirect

@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/DataDog/go-redis"
+	"github.com/go-redis/redis"
 )
 
 var rdb *redis.Client

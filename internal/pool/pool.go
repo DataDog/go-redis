@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/DataDog/go-redis/internal"
+	"github.com/go-redis/redis/internal"
 )
 
 var ErrClosed = errors.New("redis: client is closed")

@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/DataDog/go-redis/internal/util"
+	"github.com/go-redis/redis/internal/util"
 )
 
 type Writer struct {

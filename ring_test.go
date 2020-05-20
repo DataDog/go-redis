@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/DataDog/go-redis"
+	"github.com/go-redis/redis"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"

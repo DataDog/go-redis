@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DataDog/go-redis/internal/proto"
+	"github.com/go-redis/redis/internal/proto"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"

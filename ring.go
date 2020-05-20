@@ -10,10 +10,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/DataDog/go-redis/internal"
-	"github.com/DataDog/go-redis/internal/consistenthash"
-	"github.com/DataDog/go-redis/internal/hashtag"
-	"github.com/DataDog/go-redis/internal/pool"
+	"github.com/go-redis/redis/internal"
+	"github.com/go-redis/redis/internal/consistenthash"
+	"github.com/go-redis/redis/internal/hashtag"
+	"github.com/go-redis/redis/internal/pool"
 )
 
 // Hash is type of hash function used in consistent hash.
