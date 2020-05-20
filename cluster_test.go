@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-redis/redis/v7"
+	"github.com/DataDog/go-redis/v8"
 	"github.com/go-redis/redis/v7/internal/hashtag"
 
 	. "github.com/onsi/ginkgo"

@@ -37,7 +37,7 @@ go get github.com/go-redis/redis/v7
 Import:
 
 ``` go
-import "github.com/go-redis/redis/v7"
+import "github.com/DataDog/go-redis/v8"
 ```
 
 ## Quickstart
