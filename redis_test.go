@@ -2,14 +2,50 @@ package redis_test
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"net"
+	"testing"
 	"time"
 
-	"github.com/go-redis/redis"
+	"github.com/go-redis/redis/v7"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 )
+
+type redisHookError struct {
+	redis.Hook
+}
+
+var _ redis.Hook = redisHookError{}
+
+func (redisHookError) BeforeProcess(ctx context.Context, cmd redis.Cmder) (context.Context, error) {
+	return ctx, nil
+}
+
+func (redisHookError) AfterProcess(ctx context.Context, cmd redis.Cmder) error {
+	return errors.New("hook error")
+}
+
+func TestHookError(t *testing.T) {
+	rdb := redis.NewClient(&redis.Options{
+		Addr: ":6379",
+	})
+	rdb.AddHook(redisHookError{})
+
+	err := rdb.Ping().Err()
+	if err == nil {
+		t.Fatalf("got nil, expected an error")
+	}
+
+	wanted := "hook error"
+	if err.Error() != wanted {
+		t.Fatalf(`got %q, wanted %q`, err, wanted)
+	}
+}
+
+//------------------------------------------------------------------------------
 
 var _ = Describe("Client", func() {
 	var client *redis.Client
@@ -27,6 +63,25 @@ var _ = Describe("Client", func() {
 		Expect(client.String()).To(Equal("Redis<:6380 db:15>"))
 	})
 
+	It("supports WithContext", func() {
+		c, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		err := client.WithContext(c).Ping().Err()
+		Expect(err).To(MatchError("context canceled"))
+	})
+
+	It("supports WithTimeout", func() {
+		err := client.ClientPause(time.Second).Err()
+		Expect(err).NotTo(HaveOccurred())
+
+		err = client.WithTimeout(10 * time.Millisecond).Ping().Err()
+		Expect(err).To(HaveOccurred())
+
+		err = client.Ping().Err()
+		Expect(err).NotTo(HaveOccurred())
+	})
+
 	It("should ping", func() {
 		val, err := client.Ping().Result()
 		Expect(err).NotTo(HaveOccurred())
@@ -39,9 +94,11 @@ var _ = Describe("Client", func() {
 
 	It("should support custom dialers", func() {
 		custom := redis.NewClient(&redis.Options{
-			Addr: ":1234",
-			Dialer: func() (net.Conn, error) {
-				return net.Dial("tcp", redisAddr)
+			Network: "tcp",
+			Addr:    redisAddr,
+			Dialer: func(ctx context.Context, network, addr string) (net.Conn, error) {
+				var d net.Dialer
+				return d.DialContext(ctx, network, addr)
 			},
 		})
 
@@ -68,7 +125,7 @@ var _ = Describe("Client", func() {
 
 	It("should close Tx without closing the client", func() {
 		err := client.Watch(func(tx *redis.Tx) error {
-			_, err := tx.Pipelined(func(pipe redis.Pipeliner) error {
+			_, err := tx.TxPipelined(func(pipe redis.Pipeliner) error {
 				pipe.Ping()
 				return nil
 			})
@@ -127,7 +184,7 @@ var _ = Describe("Client", func() {
 
 	It("processes custom commands", func() {
 		cmd := redis.NewCmd("PING")
-		client.Process(cmd)
+		_ = client.Process(cmd)
 
 		// Flush buffers.
 		Expect(client.Echo("hello").Err()).NotTo(HaveOccurred())
@@ -145,7 +202,7 @@ var _ = Describe("Client", func() {
 		})
 
 		// Put bad connection in the pool.
-		cn, err := client.Pool().Get()
+		cn, err := client.Pool().Get(context.Background())
 		Expect(err).NotTo(HaveOccurred())
 
 		cn.SetNetConn(&badConn{})
@@ -183,7 +240,7 @@ var _ = Describe("Client", func() {
 	})
 
 	It("should update conn.UsedAt on read/write", func() {
-		cn, err := client.Pool().Get()
+		cn, err := client.Pool().Get(context.Background())
 		Expect(err).NotTo(HaveOccurred())
 		Expect(cn.UsedAt).NotTo(BeZero())
 		createdAt := cn.UsedAt()
@@ -191,10 +248,12 @@ var _ = Describe("Client", func() {
 		client.Pool().Put(cn)
 		Expect(cn.UsedAt().Equal(createdAt)).To(BeTrue())
 
+		time.Sleep(time.Second)
+
 		err = client.Ping().Err()
 		Expect(err).NotTo(HaveOccurred())
 
-		cn, err = client.Pool().Get()
+		cn, err = client.Pool().Get(context.Background())
 		Expect(err).NotTo(HaveOccurred())
 		Expect(cn).NotTo(BeNil())
 		Expect(cn.UsedAt().After(createdAt)).To(BeTrue())
@@ -223,43 +282,6 @@ var _ = Describe("Client", func() {
 		got, err := client.Get("key").Bytes()
 		Expect(err).NotTo(HaveOccurred())
 		Expect(got).To(Equal(bigVal))
-	})
-
-	It("should call WrapProcess", func() {
-		var fnCalled bool
-
-		client.WrapProcess(func(old func(redis.Cmder) error) func(redis.Cmder) error {
-			return func(cmd redis.Cmder) error {
-				fnCalled = true
-				return old(cmd)
-			}
-		})
-
-		Expect(client.Ping().Err()).NotTo(HaveOccurred())
-		Expect(fnCalled).To(BeTrue())
-	})
-
-	It("should call WrapProcess after WithContext", func() {
-		var fn1Called, fn2Called bool
-
-		client.WrapProcess(func(old func(cmd redis.Cmder) error) func(cmd redis.Cmder) error {
-			return func(cmd redis.Cmder) error {
-				fn1Called = true
-				return old(cmd)
-			}
-		})
-
-		client2 := client.WithContext(client.Context())
-		client2.WrapProcess(func(old func(cmd redis.Cmder) error) func(cmd redis.Cmder) error {
-			return func(cmd redis.Cmder) error {
-				fn2Called = true
-				return old(cmd)
-			}
-		})
-
-		Expect(client2.Ping().Err()).NotTo(HaveOccurred())
-		Expect(fn2Called).To(BeTrue())
-		Expect(fn1Called).To(BeTrue())
 	})
 })
 
@@ -310,7 +332,7 @@ var _ = Describe("Client timeout", func() {
 
 		It("Tx Pipeline timeouts", func() {
 			err := client.Watch(func(tx *redis.Tx) error {
-				_, err := tx.Pipelined(func(pipe redis.Pipeliner) error {
+				_, err := tx.TxPipelined(func(pipe redis.Pipeliner) error {
 					pipe.Ping()
 					return nil
 				})

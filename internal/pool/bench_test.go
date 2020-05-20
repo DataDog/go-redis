@@ -1,11 +1,12 @@
 package pool_test
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
 
-	"github.com/go-redis/redis/internal/pool"
+	"github.com/go-redis/redis/v7/internal/pool"
 )
 
 type poolGetPutBenchmark struct {
@@ -39,7 +40,7 @@ func BenchmarkPoolGetPut(b *testing.B) {
 
 			b.RunParallel(func(pb *testing.PB) {
 				for pb.Next() {
-					cn, err := connPool.Get()
+					cn, err := connPool.Get(context.Background())
 					if err != nil {
 						b.Fatal(err)
 					}
@@ -81,11 +82,11 @@ func BenchmarkPoolGetRemove(b *testing.B) {
 
 			b.RunParallel(func(pb *testing.PB) {
 				for pb.Next() {
-					cn, err := connPool.Get()
+					cn, err := connPool.Get(context.Background())
 					if err != nil {
 						b.Fatal(err)
 					}
-					connPool.Remove(cn)
+					connPool.Remove(cn, nil)
 				}
 			})
 		})

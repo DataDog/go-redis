@@ -1,7 +1,10 @@
 package redis_test
 
 import (
-	"github.com/go-redis/redis"
+	"errors"
+	"time"
+
+	redis "github.com/go-redis/redis/v7"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -57,4 +60,37 @@ var _ = Describe("Cmd", func() {
 		Expect(f).To(Equal(float64(10)))
 	})
 
+	It("supports float32", func() {
+		f := float32(66.97)
+
+		err := client.Set("float_key", f, 0).Err()
+		Expect(err).NotTo(HaveOccurred())
+
+		val, err := client.Get("float_key").Float32()
+		Expect(err).NotTo(HaveOccurred())
+		Expect(val).To(Equal(f))
+	})
+
+	It("supports time.Time", func() {
+		tm := time.Date(2019, 01, 01, 0, 0, 0, 0, time.UTC)
+
+		err := client.Set("time_key", tm, 0).Err()
+		Expect(err).NotTo(HaveOccurred())
+
+		s, err := client.Get("time_key").Result()
+		Expect(err).NotTo(HaveOccurred())
+		Expect(s).To(Equal("2019-01-01T00:00:00Z"))
+
+		tm2, err := client.Get("time_key").Time()
+		Expect(err).NotTo(HaveOccurred())
+		Expect(tm2).To(BeTemporally("==", tm))
+	})
+
+	It("allow to set custom error", func() {
+		e := errors.New("custom error")
+		cmd := redis.Cmd{}
+		cmd.SetErr(e)
+		_, err := cmd.Result()
+		Expect(err).To(Equal(e))
+	})
 })

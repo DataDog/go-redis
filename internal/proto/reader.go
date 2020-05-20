@@ -4,9 +4,8 @@ import (
 	"bufio"
 	"fmt"
 	"io"
-	"strconv"
 
-	"github.com/go-redis/redis/internal/util"
+	"github.com/go-redis/redis/v7/internal/util"
 )
 
 const (
@@ -41,25 +40,42 @@ func NewReader(rd io.Reader) *Reader {
 	}
 }
 
+func (r *Reader) Buffered() int {
+	return r.rd.Buffered()
+}
+
+func (r *Reader) Peek(n int) ([]byte, error) {
+	return r.rd.Peek(n)
+}
+
 func (r *Reader) Reset(rd io.Reader) {
 	r.rd.Reset(rd)
 }
 
 func (r *Reader) ReadLine() ([]byte, error) {
-	line, isPrefix, err := r.rd.ReadLine()
+	line, err := r.readLine()
 	if err != nil {
 		return nil, err
-	}
-	if isPrefix {
-		return nil, bufio.ErrBufferFull
-	}
-	if len(line) == 0 {
-		return nil, fmt.Errorf("redis: reply is empty")
 	}
 	if isNilReply(line) {
 		return nil, Nil
 	}
 	return line, nil
+}
+
+// readLine that returns an error if:
+//   - there is a pending read error;
+//   - or line does not end with \r\n.
+func (r *Reader) readLine() ([]byte, error) {
+	b, err := r.rd.ReadSlice('\n')
+	if err != nil {
+		return nil, err
+	}
+	if len(b) <= 2 || b[len(b)-1] != '\n' || b[len(b)-2] != '\r' {
+		return nil, fmt.Errorf("redis: invalid reply: %q", b)
+	}
+	b = b[:len(b)-2]
+	return b, nil
 }
 
 func (r *Reader) ReadReply(m MultiBulkParse) (interface{}, error) {
@@ -80,6 +96,10 @@ func (r *Reader) ReadReply(m MultiBulkParse) (interface{}, error) {
 	case ArrayReply:
 		n, err := parseArrayLen(line)
 		if err != nil {
+			return nil, err
+		}
+		if m == nil {
+			err := fmt.Errorf("redis: got %.100q, but multi bulk parser is nil", line)
 			return nil, err
 		}
 		return m(r, n)
@@ -126,7 +146,7 @@ func (r *Reader) readStringReply(line []byte) (string, error) {
 		return "", Nil
 	}
 
-	replyLen, err := strconv.Atoi(string(line[1:]))
+	replyLen, err := util.Atoi(line[1:])
 	if err != nil {
 		return "", err
 	}
@@ -251,7 +271,7 @@ func (r *Reader) _readTmpBytesReply(line []byte) ([]byte, error) {
 		return nil, Nil
 	}
 
-	replyLen, err := strconv.Atoi(string(line[1:]))
+	replyLen, err := util.Atoi(line[1:])
 	if err != nil {
 		return nil, err
 	}
@@ -266,10 +286,12 @@ func (r *Reader) _readTmpBytesReply(line []byte) ([]byte, error) {
 }
 
 func (r *Reader) buf(n int) []byte {
-	if d := n - cap(r._buf); d > 0 {
-		r._buf = append(r._buf, make([]byte, d)...)
+	if n <= cap(r._buf) {
+		return r._buf[:n]
 	}
-	return r._buf[:n]
+	d := n - cap(r._buf)
+	r._buf = append(r._buf, make([]byte, d)...)
+	return r._buf
 }
 
 func isNilReply(b []byte) bool {

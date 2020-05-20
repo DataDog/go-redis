@@ -1,7 +1,7 @@
 package redis_test
 
 import (
-	"github.com/go-redis/redis"
+	"github.com/go-redis/redis/v7"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -59,6 +59,13 @@ var _ = Describe("pipelining", func() {
 			val, err := get.Result()
 			Expect(err).NotTo(HaveOccurred())
 			Expect(val).To(Equal("value"))
+		})
+
+		It("supports custom command", func() {
+			pipe.Do("ping")
+			cmds, err := pipe.Exec()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cmds).To(HaveLen(1))
 		})
 	}
 

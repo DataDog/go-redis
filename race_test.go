@@ -2,6 +2,7 @@ package redis_test
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"net"
 	"strconv"
@@ -9,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-redis/redis"
+	"github.com/go-redis/redis/v7"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -193,7 +194,7 @@ var _ = Describe("races", func() {
 					num, err := strconv.ParseInt(val, 10, 64)
 					Expect(err).NotTo(HaveOccurred())
 
-					cmds, err := tx.Pipelined(func(pipe redis.Pipeliner) error {
+					cmds, err := tx.TxPipelined(func(pipe redis.Pipeliner) error {
 						pipe.Set("key", strconv.FormatInt(num+1, 10), 0)
 						return nil
 					})
@@ -283,6 +284,13 @@ var _ = Describe("races", func() {
 		wg.Wait()
 		Expect(received).To(Equal(uint32(C * N)))
 	})
+
+	It("should WithContext", func() {
+		perform(C, func(_ int) {
+			err := client.WithContext(context.Background()).Ping().Err()
+			Expect(err).NotTo(HaveOccurred())
+		})
+	})
 })
 
 var _ = Describe("cluster races", func() {
@@ -291,7 +299,7 @@ var _ = Describe("cluster races", func() {
 
 	BeforeEach(func() {
 		opt := redisClusterOptions()
-		client = cluster.clusterClient(opt)
+		client = cluster.newClusterClient(opt)
 
 		C, N = 10, 1000
 		if testing.Short() {

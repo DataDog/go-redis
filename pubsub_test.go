@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-redis/redis"
+	"github.com/go-redis/redis/v7"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -25,6 +25,13 @@ var _ = Describe("PubSub", func() {
 
 	AfterEach(func() {
 		Expect(client.Close()).NotTo(HaveOccurred())
+	})
+
+	It("implements Stringer", func() {
+		pubsub := client.PSubscribe("mychannel*")
+		defer pubsub.Close()
+
+		Expect(pubsub.String()).To(Equal("PubSub(mychannel*)"))
 	})
 
 	It("should support pattern matching", func() {
@@ -71,7 +78,7 @@ var _ = Describe("PubSub", func() {
 		}
 
 		stats := client.PoolStats()
-		Expect(stats.Misses).To(Equal(uint32(2)))
+		Expect(stats.Misses).To(Equal(uint32(1)))
 	})
 
 	It("should pub/sub channels", func() {
@@ -194,7 +201,7 @@ var _ = Describe("PubSub", func() {
 		}
 
 		stats := client.PoolStats()
-		Expect(stats.Misses).To(Equal(uint32(2)))
+		Expect(stats.Misses).To(Equal(uint32(1)))
 	})
 
 	It("should ping/pong", func() {

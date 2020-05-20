@@ -1,17 +1,19 @@
 package pool_test
 
 import (
+	"context"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/go-redis/redis/internal/pool"
+	"github.com/go-redis/redis/v7/internal/pool"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 )
 
 var _ = Describe("ConnPool", func() {
+	c := context.Background()
 	var connPool *pool.ConnPool
 
 	BeforeEach(func() {
@@ -30,13 +32,13 @@ var _ = Describe("ConnPool", func() {
 
 	It("should unblock client when conn is removed", func() {
 		// Reserve one connection.
-		cn, err := connPool.Get()
+		cn, err := connPool.Get(c)
 		Expect(err).NotTo(HaveOccurred())
 
 		// Reserve all other connections.
 		var cns []*pool.Conn
 		for i := 0; i < 9; i++ {
-			cn, err := connPool.Get()
+			cn, err := connPool.Get(c)
 			Expect(err).NotTo(HaveOccurred())
 			cns = append(cns, cn)
 		}
@@ -47,7 +49,7 @@ var _ = Describe("ConnPool", func() {
 			defer GinkgoRecover()
 
 			started <- true
-			_, err := connPool.Get()
+			_, err := connPool.Get(c)
 			Expect(err).NotTo(HaveOccurred())
 			done <- true
 
@@ -63,7 +65,7 @@ var _ = Describe("ConnPool", func() {
 			// ok
 		}
 
-		connPool.Remove(cn)
+		connPool.Remove(cn, nil)
 
 		// Check that Get is unblocked.
 		select {
@@ -80,6 +82,7 @@ var _ = Describe("ConnPool", func() {
 })
 
 var _ = Describe("MinIdleConns", func() {
+	c := context.Background()
 	const poolSize = 100
 	var minIdleConns int
 	var connPool *pool.ConnPool
@@ -110,7 +113,7 @@ var _ = Describe("MinIdleConns", func() {
 
 			BeforeEach(func() {
 				var err error
-				cn, err = connPool.Get()
+				cn, err = connPool.Get(c)
 				Expect(err).NotTo(HaveOccurred())
 
 				Eventually(func() int {
@@ -125,7 +128,7 @@ var _ = Describe("MinIdleConns", func() {
 
 			Context("after Remove", func() {
 				BeforeEach(func() {
-					connPool.Remove(cn)
+					connPool.Remove(cn, nil)
 				})
 
 				It("has idle connections", func() {
@@ -145,7 +148,7 @@ var _ = Describe("MinIdleConns", func() {
 				perform(poolSize, func(_ int) {
 					defer GinkgoRecover()
 
-					cn, err := connPool.Get()
+					cn, err := connPool.Get(c)
 					Expect(err).NotTo(HaveOccurred())
 					mu.Lock()
 					cns = append(cns, cn)
@@ -160,7 +163,7 @@ var _ = Describe("MinIdleConns", func() {
 			It("Get is blocked", func() {
 				done := make(chan struct{})
 				go func() {
-					connPool.Get()
+					connPool.Get(c)
 					close(done)
 				}()
 
@@ -202,7 +205,7 @@ var _ = Describe("MinIdleConns", func() {
 				BeforeEach(func() {
 					perform(len(cns), func(i int) {
 						mu.RLock()
-						connPool.Remove(cns[i])
+						connPool.Remove(cns[i], nil)
 						mu.RUnlock()
 					})
 
@@ -247,6 +250,8 @@ var _ = Describe("MinIdleConns", func() {
 })
 
 var _ = Describe("conns reaper", func() {
+	c := context.Background()
+
 	const idleTimeout = time.Minute
 	const maxAge = time.Hour
 
@@ -274,13 +279,13 @@ var _ = Describe("conns reaper", func() {
 			// add stale connections
 			staleConns = nil
 			for i := 0; i < 3; i++ {
-				cn, err := connPool.Get()
+				cn, err := connPool.Get(c)
 				Expect(err).NotTo(HaveOccurred())
 				switch typ {
 				case "idle":
 					cn.SetUsedAt(time.Now().Add(-2 * idleTimeout))
 				case "aged":
-					cn.InitedAt = time.Now().Add(-2 * maxAge)
+					cn.SetCreatedAt(time.Now().Add(-2 * maxAge))
 				}
 				conns = append(conns, cn)
 				staleConns = append(staleConns, cn)
@@ -288,15 +293,12 @@ var _ = Describe("conns reaper", func() {
 
 			// add fresh connections
 			for i := 0; i < 3; i++ {
-				cn, err := connPool.Get()
+				cn, err := connPool.Get(c)
 				Expect(err).NotTo(HaveOccurred())
 				conns = append(conns, cn)
 			}
 
 			for _, cn := range conns {
-				if cn.InitedAt.IsZero() {
-					cn.InitedAt = time.Now()
-				}
 				connPool.Put(cn)
 			}
 
@@ -336,7 +338,7 @@ var _ = Describe("conns reaper", func() {
 			for j := 0; j < 3; j++ {
 				var freeCns []*pool.Conn
 				for i := 0; i < 3; i++ {
-					cn, err := connPool.Get()
+					cn, err := connPool.Get(c)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(cn).NotTo(BeNil())
 					freeCns = append(freeCns, cn)
@@ -345,7 +347,7 @@ var _ = Describe("conns reaper", func() {
 				Expect(connPool.Len()).To(Equal(3))
 				Expect(connPool.IdleLen()).To(Equal(0))
 
-				cn, err := connPool.Get()
+				cn, err := connPool.Get(c)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(cn).NotTo(BeNil())
 				conns = append(conns, cn)
@@ -353,7 +355,7 @@ var _ = Describe("conns reaper", func() {
 				Expect(connPool.Len()).To(Equal(4))
 				Expect(connPool.IdleLen()).To(Equal(0))
 
-				connPool.Remove(cn)
+				connPool.Remove(cn, nil)
 
 				Expect(connPool.Len()).To(Equal(3))
 				Expect(connPool.IdleLen()).To(Equal(0))
@@ -373,6 +375,7 @@ var _ = Describe("conns reaper", func() {
 })
 
 var _ = Describe("race", func() {
+	c := context.Background()
 	var connPool *pool.ConnPool
 	var C, N int
 
@@ -399,7 +402,7 @@ var _ = Describe("race", func() {
 
 		perform(C, func(id int) {
 			for i := 0; i < N; i++ {
-				cn, err := connPool.Get()
+				cn, err := connPool.Get(c)
 				Expect(err).NotTo(HaveOccurred())
 				if err == nil {
 					connPool.Put(cn)
@@ -407,10 +410,10 @@ var _ = Describe("race", func() {
 			}
 		}, func(id int) {
 			for i := 0; i < N; i++ {
-				cn, err := connPool.Get()
+				cn, err := connPool.Get(c)
 				Expect(err).NotTo(HaveOccurred())
 				if err == nil {
-					connPool.Remove(cn)
+					connPool.Remove(cn, nil)
 				}
 			}
 		})

@@ -1,6 +1,7 @@
 package redis_test
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -11,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-redis/redis"
+	"github.com/go-redis/redis/v7"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -45,7 +46,7 @@ var (
 
 var cluster = &clusterScenario{
 	ports:     []string{"8220", "8221", "8222", "8223", "8224", "8225"},
-	nodeIds:   make([]string, 6),
+	nodeIDs:   make([]string, 6),
 	processes: make(map[string]*redisProcess, 6),
 	clients:   make(map[string]*redis.Client, 6),
 }
@@ -113,8 +114,8 @@ func redisOptions() *redis.Options {
 		WriteTimeout:       30 * time.Second,
 		PoolSize:           10,
 		PoolTimeout:        30 * time.Second,
-		IdleTimeout:        500 * time.Millisecond,
-		IdleCheckFrequency: 500 * time.Millisecond,
+		IdleTimeout:        time.Minute,
+		IdleCheckFrequency: 100 * time.Millisecond,
 	}
 }
 
@@ -125,8 +126,8 @@ func redisClusterOptions() *redis.ClusterOptions {
 		WriteTimeout:       30 * time.Second,
 		PoolSize:           10,
 		PoolTimeout:        30 * time.Second,
-		IdleTimeout:        500 * time.Millisecond,
-		IdleCheckFrequency: 500 * time.Millisecond,
+		IdleTimeout:        time.Minute,
+		IdleCheckFrequency: 100 * time.Millisecond,
 	}
 }
 
@@ -141,8 +142,8 @@ func redisRingOptions() *redis.RingOptions {
 		WriteTimeout:       30 * time.Second,
 		PoolSize:           10,
 		PoolTimeout:        30 * time.Second,
-		IdleTimeout:        500 * time.Millisecond,
-		IdleCheckFrequency: 500 * time.Millisecond,
+		IdleTimeout:        time.Minute,
+		IdleCheckFrequency: 100 * time.Millisecond,
 	}
 }
 
@@ -257,7 +258,7 @@ func (p *redisProcess) Close() error {
 
 var (
 	redisServerBin, _  = filepath.Abs(filepath.Join("testdata", "redis", "src", "redis-server"))
-	redisServerConf, _ = filepath.Abs(filepath.Join("testdata", "redis.conf"))
+	redisServerConf, _ = filepath.Abs(filepath.Join("testdata", "redis", "redis.conf"))
 )
 
 func redisDir(port string) (string, error) {
@@ -343,6 +344,14 @@ type badConn struct {
 
 var _ net.Conn = &badConn{}
 
+func (cn *badConn) SetReadDeadline(t time.Time) error {
+	return nil
+}
+
+func (cn *badConn) SetWriteDeadline(t time.Time) error {
+	return nil
+}
+
 func (cn *badConn) Read([]byte) (int, error) {
 	if cn.readDelay != 0 {
 		time.Sleep(cn.readDelay)
@@ -361,4 +370,42 @@ func (cn *badConn) Write([]byte) (int, error) {
 		return 0, cn.writeErr
 	}
 	return 0, badConnError("bad connection")
+}
+
+//------------------------------------------------------------------------------
+
+type hook struct {
+	beforeProcess func(ctx context.Context, cmd redis.Cmder) (context.Context, error)
+	afterProcess  func(ctx context.Context, cmd redis.Cmder) error
+
+	beforeProcessPipeline func(ctx context.Context, cmds []redis.Cmder) (context.Context, error)
+	afterProcessPipeline  func(ctx context.Context, cmds []redis.Cmder) error
+}
+
+func (h *hook) BeforeProcess(ctx context.Context, cmd redis.Cmder) (context.Context, error) {
+	if h.beforeProcess != nil {
+		return h.beforeProcess(ctx, cmd)
+	}
+	return ctx, nil
+}
+
+func (h *hook) AfterProcess(ctx context.Context, cmd redis.Cmder) error {
+	if h.afterProcess != nil {
+		return h.afterProcess(ctx, cmd)
+	}
+	return nil
+}
+
+func (h *hook) BeforeProcessPipeline(ctx context.Context, cmds []redis.Cmder) (context.Context, error) {
+	if h.beforeProcessPipeline != nil {
+		return h.beforeProcessPipeline(ctx, cmds)
+	}
+	return ctx, nil
+}
+
+func (h *hook) AfterProcessPipeline(ctx context.Context, cmds []redis.Cmder) error {
+	if h.afterProcessPipeline != nil {
+		return h.afterProcessPipeline(ctx, cmds)
+	}
+	return nil
 }

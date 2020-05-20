@@ -6,8 +6,9 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"time"
 
-	"github.com/go-redis/redis/internal/util"
+	"github.com/go-redis/redis/v7/internal/util"
 )
 
 type Writer struct {
@@ -89,9 +90,10 @@ func (w *Writer) writeArg(v interface{}) error {
 	case bool:
 		if v {
 			return w.int(1)
-		} else {
-			return w.int(0)
 		}
+		return w.int(0)
+	case time.Time:
+		return w.string(v.Format(time.RFC3339))
 	case encoding.BinaryMarshaler:
 		b, err := v.MarshalBinary()
 		if err != nil {
@@ -148,6 +150,10 @@ func (w *Writer) crlf() error {
 		return err
 	}
 	return w.wr.WriteByte('\n')
+}
+
+func (w *Writer) Buffered() int {
+	return w.wr.Buffered()
 }
 
 func (w *Writer) Reset(wr io.Writer) {

@@ -1,18 +1,19 @@
-package internal
+package redis
 
 import (
+	"context"
 	"io"
 	"net"
 	"strings"
 
-	"github.com/go-redis/redis/internal/proto"
+	"github.com/go-redis/redis/v7/internal/proto"
 )
 
-func IsRetryableError(err error, retryTimeout bool) bool {
-	if err == nil {
+func isRetryableError(err error, retryTimeout bool) bool {
+	switch err {
+	case nil, context.Canceled, context.DeadlineExceeded:
 		return false
-	}
-	if err == io.EOF {
+	case io.EOF:
 		return true
 	}
 	if netErr, ok := err.(net.Error); ok {
@@ -21,6 +22,7 @@ func IsRetryableError(err error, retryTimeout bool) bool {
 		}
 		return true
 	}
+
 	s := err.Error()
 	if s == "ERR max number of clients reached" {
 		return true
@@ -37,17 +39,19 @@ func IsRetryableError(err error, retryTimeout bool) bool {
 	return false
 }
 
-func IsRedisError(err error) bool {
+func isRedisError(err error) bool {
 	_, ok := err.(proto.RedisError)
 	return ok
 }
 
-func IsBadConn(err error, allowTimeout bool) bool {
+func isBadConn(err error, allowTimeout bool) bool {
 	if err == nil {
 		return false
 	}
-	if IsRedisError(err) {
-		return strings.HasPrefix(err.Error(), "READONLY ")
+	if isRedisError(err) {
+		// Close connections in read only state in case domain addr is used
+		// and domain resolves to a different Redis Server. See #790.
+		return isReadOnlyError(err)
 	}
 	if allowTimeout {
 		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
@@ -57,17 +61,18 @@ func IsBadConn(err error, allowTimeout bool) bool {
 	return true
 }
 
-func IsMovedError(err error) (moved bool, ask bool, addr string) {
-	if !IsRedisError(err) {
+func isMovedError(err error) (moved bool, ask bool, addr string) {
+	if !isRedisError(err) {
 		return
 	}
 
 	s := err.Error()
-	if strings.HasPrefix(s, "MOVED ") {
+	switch {
+	case strings.HasPrefix(s, "MOVED "):
 		moved = true
-	} else if strings.HasPrefix(s, "ASK ") {
+	case strings.HasPrefix(s, "ASK "):
 		ask = true
-	} else {
+	default:
 		return
 	}
 
@@ -79,6 +84,10 @@ func IsMovedError(err error) (moved bool, ask bool, addr string) {
 	return
 }
 
-func IsLoadingError(err error) bool {
+func isLoadingError(err error) bool {
 	return strings.HasPrefix(err.Error(), "LOADING ")
+}
+
+func isReadOnlyError(err error) bool {
+	return strings.HasPrefix(err.Error(), "READONLY ")
 }
