@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DataDog/go-redis/v8/internal"
-	"github.com/DataDog/go-redis/v8/internal/proto"
-	"github.com/DataDog/go-redis/v8/internal/util"
+	"github.com/DataDog/go-redis/internal"
+	"github.com/DataDog/go-redis/internal/proto"
+	"github.com/DataDog/go-redis/internal/util"
 )
 
 type Cmder interface {

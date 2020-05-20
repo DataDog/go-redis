@@ -5,7 +5,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/DataDog/go-redis/v8/internal"
+	"github.com/DataDog/go-redis/internal"
 )
 
 func usePrecise(dur time.Duration) bool {

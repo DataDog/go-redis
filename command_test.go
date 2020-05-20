@@ -4,7 +4,7 @@ import (
 	"errors"
 	"time"
 
-	redis "github.com/DataDog/go-redis/v8"
+	redis "github.com/DataDog/go-redis"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"

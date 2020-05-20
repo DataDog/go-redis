@@ -8,9 +8,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/DataDog/go-redis/v8/internal"
-	"github.com/DataDog/go-redis/v8/internal/pool"
-	"github.com/DataDog/go-redis/v8/internal/proto"
+	"github.com/DataDog/go-redis/internal"
+	"github.com/DataDog/go-redis/internal/pool"
+	"github.com/DataDog/go-redis/internal/proto"
 )
 
 const pingTimeout = 30 * time.Second

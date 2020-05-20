@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/DataDog/go-redis/v8/internal/pool"
+	"github.com/DataDog/go-redis/internal/pool"
 )
 
 type pipelineExecer func(context.Context, []Cmder) error

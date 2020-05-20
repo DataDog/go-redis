@@ -6,9 +6,9 @@ import (
 	"log"
 	"time"
 
-	"github.com/DataDog/go-redis/v8/internal"
-	"github.com/DataDog/go-redis/v8/internal/pool"
-	"github.com/DataDog/go-redis/v8/internal/proto"
+	"github.com/DataDog/go-redis/internal"
+	"github.com/DataDog/go-redis/internal/pool"
+	"github.com/DataDog/go-redis/internal/proto"
 )
 
 // Nil reply returned by Redis when key does not exist.

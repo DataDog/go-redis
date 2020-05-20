@@ -6,7 +6,7 @@ import (
 	"net"
 	"strings"
 
-	"github.com/DataDog/go-redis/v8/internal/proto"
+	"github.com/DataDog/go-redis/internal/proto"
 )
 
 func isRetryableError(err error, retryTimeout bool) bool {
