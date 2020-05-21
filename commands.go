@@ -315,19 +315,11 @@ type Cmdable interface {
 
 type StatefulCmdable interface {
 	Cmdable
-<<<<<<< HEAD
-	Auth(password string) *StatusCmd
-	AuthACL(username, password string) *StatusCmd
-	Select(index int) *StatusCmd
-	SwapDB(index1, index2 int) *StatusCmd
-	ClientSetName(name string) *BoolCmd
-=======
 	Auth(ctx context.Context, password string) *StatusCmd
 	AuthACL(ctx context.Context, username, password string) *StatusCmd
 	Select(ctx context.Context, index int) *StatusCmd
 	SwapDB(ctx context.Context, index1, index2 int) *StatusCmd
 	ClientSetName(ctx context.Context, name string) *BoolCmd
->>>>>>> upstream/master
 }
 
 var _ Cmdable = (*Client)(nil)
@@ -350,21 +342,9 @@ func (c statefulCmdable) Auth(ctx context.Context, password string) *StatusCmd {
 // Perform an AUTH command, using the given user and pass.
 // Should be used to authenticate the current connection with one of the connections defined in the ACL list
 // when connecting to a Redis 6.0 instance, or greater, that is using the Redis ACL system.
-<<<<<<< HEAD
-func (c statefulCmdable) AuthACL(username, password string) *StatusCmd {
-	cmd := NewStatusCmd("auth", username, password)
-	_ = c(cmd)
-	return cmd
-}
-
-func (c cmdable) Echo(message interface{}) *StringCmd {
-	cmd := NewStringCmd("echo", message)
-	_ = c(cmd)
-=======
 func (c statefulCmdable) AuthACL(ctx context.Context, username, password string) *StatusCmd {
 	cmd := NewStatusCmd(ctx, "auth", username, password)
 	_ = c(ctx, cmd)
->>>>>>> upstream/master
 	return cmd
 }
 
