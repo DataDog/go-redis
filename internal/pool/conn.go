@@ -1,27 +1,35 @@
 package pool
 
 import (
+	"bufio"
 	"context"
 	"net"
 	"sync/atomic"
 	"time"
 
+<<<<<<< HEAD
 	"github.com/go-redis/redis/internal"
 	"github.com/go-redis/redis/internal/proto"
+=======
+	"github.com/go-redis/redis/internal"
+	"github.com/go-redis/redis/internal/proto"
+	"go.opentelemetry.io/otel/api/trace"
+>>>>>>> 51a4ea4
 )
 
 var noDeadline = time.Time{}
 
 type Conn struct {
+	usedAt  int64 // atomic
 	netConn net.Conn
 
 	rd *proto.Reader
+	bw *bufio.Writer
 	wr *proto.Writer
 
 	Inited    bool
 	pooled    bool
 	createdAt time.Time
-	usedAt    int64 // atomic
 }
 
 func NewConn(netConn net.Conn) *Conn {
@@ -30,7 +38,8 @@ func NewConn(netConn net.Conn) *Conn {
 		createdAt: time.Now(),
 	}
 	cn.rd = proto.NewReader(netConn)
-	cn.wr = proto.NewWriter(netConn)
+	cn.bw = bufio.NewWriter(netConn)
+	cn.wr = proto.NewWriter(cn.bw)
 	cn.SetUsedAt(time.Now())
 	return cn
 }
@@ -47,7 +56,7 @@ func (cn *Conn) SetUsedAt(tm time.Time) {
 func (cn *Conn) SetNetConn(netConn net.Conn) {
 	cn.netConn = netConn
 	cn.rd.Reset(netConn)
-	cn.wr.Reset(netConn)
+	cn.bw.Reset(netConn)
 }
 
 func (cn *Conn) Write(b []byte) (int, error) {
@@ -55,38 +64,47 @@ func (cn *Conn) Write(b []byte) (int, error) {
 }
 
 func (cn *Conn) RemoteAddr() net.Addr {
-	return cn.netConn.RemoteAddr()
+	if cn.netConn != nil {
+		return cn.netConn.RemoteAddr()
+	}
+	return nil
 }
 
 func (cn *Conn) WithReader(ctx context.Context, timeout time.Duration, fn func(rd *proto.Reader) error) error {
-	return internal.WithSpan(ctx, "with_reader", func(ctx context.Context) error {
-		err := cn.netConn.SetReadDeadline(cn.deadline(ctx, timeout))
-		if err != nil {
-			return err
+	return internal.WithSpan(ctx, "with_reader", func(ctx context.Context, span trace.Span) error {
+		if err := cn.netConn.SetReadDeadline(cn.deadline(ctx, timeout)); err != nil {
+			return internal.RecordError(ctx, err)
 		}
-		return fn(cn.rd)
+		if err := fn(cn.rd); err != nil {
+			return internal.RecordError(ctx, err)
+		}
+		return nil
 	})
 }
 
 func (cn *Conn) WithWriter(
 	ctx context.Context, timeout time.Duration, fn func(wr *proto.Writer) error,
 ) error {
-	return internal.WithSpan(ctx, "with_writer", func(ctx context.Context) error {
-		err := cn.netConn.SetWriteDeadline(cn.deadline(ctx, timeout))
-		if err != nil {
-			return err
+	return internal.WithSpan(ctx, "with_writer", func(ctx context.Context, span trace.Span) error {
+		if err := cn.netConn.SetWriteDeadline(cn.deadline(ctx, timeout)); err != nil {
+			return internal.RecordError(ctx, err)
 		}
 
-		if cn.wr.Buffered() > 0 {
-			cn.wr.Reset(cn.netConn)
+		if cn.bw.Buffered() > 0 {
+			cn.bw.Reset(cn.netConn)
 		}
 
-		err = fn(cn.wr)
-		if err != nil {
-			return err
+		if err := fn(cn.wr); err != nil {
+			return internal.RecordError(ctx, err)
 		}
 
-		return cn.wr.Flush()
+		if err := cn.bw.Flush(); err != nil {
+			return internal.RecordError(ctx, err)
+		}
+
+		internal.WritesCounter.Add(ctx, 1)
+
+		return nil
 	})
 }
 

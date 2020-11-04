@@ -10,8 +10,10 @@ import (
 	"github.com/go-redis/redis"
 )
 
-var ctx = context.Background()
-var rdb *redis.Client
+var (
+	ctx = context.Background()
+	rdb *redis.Client
+)
 
 func init() {
 	rdb = redis.NewClient(&redis.Options{
@@ -78,7 +80,7 @@ func ExampleNewClusterClient_manualSetup() {
 	// clusterSlots returns cluster slots information.
 	// It can use service like ZooKeeper to maintain configuration information
 	// and Cluster.ReloadState to manually trigger state reloading.
-	clusterSlots := func() ([]redis.ClusterSlot, error) {
+	clusterSlots := func(ctx context.Context) ([]redis.ClusterSlot, error) {
 		slots := []redis.ClusterSlot{
 			// First node with 1 master and 1 slave.
 			{
@@ -112,10 +114,7 @@ func ExampleNewClusterClient_manualSetup() {
 
 	// ReloadState reloads cluster state. It calls ClusterSlots func
 	// to get cluster slots information.
-	err := rdb.ReloadState(ctx)
-	if err != nil {
-		panic(err)
-	}
+	rdb.ReloadState(ctx)
 }
 
 func ExampleNewRing() {
@@ -184,6 +183,13 @@ func ExampleClient_Set() {
 
 	// key2 will expire in an hour.
 	err = rdb.Set(ctx, "key2", "value", time.Hour).Err()
+	if err != nil {
+		panic(err)
+	}
+}
+
+func ExampleClient_SetEX() {
+	err := rdb.SetEX(ctx, "key", "value", time.Hour).Err()
 	if err != nil {
 		panic(err)
 	}
@@ -301,42 +307,49 @@ func ExampleClient_TxPipeline() {
 }
 
 func ExampleClient_Watch() {
-	const routineCount = 100
+	const maxRetries = 1000
 
-	// Transactionally increments key using GET and SET commands.
+	// Increment transactionally increments key using GET and SET commands.
 	increment := func(key string) error {
+		// Transactional function.
 		txf := func(tx *redis.Tx) error {
-			// get current value or zero
+			// Get current value or zero.
 			n, err := tx.Get(ctx, key).Int()
 			if err != nil && err != redis.Nil {
 				return err
 			}
 
-			// actual opperation (local in optimistic lock)
+			// Actual opperation (local in optimistic lock).
 			n++
 
-			// runs only if the watched keys remain unchanged
+			// Operation is commited only if the watched keys remain unchanged.
 			_, err = tx.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
-				// pipe handles the error case
 				pipe.Set(ctx, key, n, 0)
 				return nil
 			})
 			return err
 		}
 
-		for retries := routineCount; retries > 0; retries-- {
+		for i := 0; i < maxRetries; i++ {
 			err := rdb.Watch(ctx, txf, key)
-			if err != redis.TxFailedErr {
-				return err
+			if err == nil {
+				// Success.
+				return nil
 			}
-			// optimistic lock lost
+			if err == redis.TxFailedErr {
+				// Optimistic lock lost. Retry.
+				continue
+			}
+			// Return any other error.
+			return err
 		}
+
 		return errors.New("increment reached maximum number of retries")
 	}
 
 	var wg sync.WaitGroup
-	wg.Add(routineCount)
-	for i := 0; i < routineCount; i++ {
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
 		go func() {
 			defer wg.Done()
 
@@ -500,4 +513,25 @@ func ExampleNewUniversalClient_cluster() {
 	defer rdb.Close()
 
 	rdb.Ping(ctx)
+}
+
+func ExampleClient_SlowLogGet() {
+	const key = "slowlog-log-slower-than"
+
+	old := rdb.ConfigGet(ctx, key).Val()
+	rdb.ConfigSet(ctx, key, "0")
+	defer rdb.ConfigSet(ctx, key, old[1].(string))
+
+	if err := rdb.Do(ctx, "slowlog", "reset").Err(); err != nil {
+		panic(err)
+	}
+
+	rdb.Set(ctx, "test", "true", 0)
+
+	result, err := rdb.SlowLogGet(ctx, -1).Result()
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(len(result))
+	// Output: 2
 }

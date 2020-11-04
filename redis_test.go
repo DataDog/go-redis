@@ -206,7 +206,7 @@ var _ = Describe("Client", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		cn.SetNetConn(&badConn{})
-		client.Pool().Put(cn)
+		client.Pool().Put(ctx, cn)
 
 		err = client.Ping(ctx).Err()
 		Expect(err).NotTo(HaveOccurred())
@@ -215,7 +215,7 @@ var _ = Describe("Client", func() {
 	It("should retry with backoff", func() {
 		clientNoRetry := redis.NewClient(&redis.Options{
 			Addr:       ":1234",
-			MaxRetries: 0,
+			MaxRetries: -1,
 		})
 		defer clientNoRetry.Close()
 
@@ -245,7 +245,7 @@ var _ = Describe("Client", func() {
 		Expect(cn.UsedAt).NotTo(BeZero())
 		createdAt := cn.UsedAt()
 
-		client.Pool().Put(cn)
+		client.Pool().Put(ctx, cn)
 		Expect(cn.UsedAt().Equal(createdAt)).To(BeTrue())
 
 		time.Sleep(time.Second)
@@ -282,6 +282,23 @@ var _ = Describe("Client", func() {
 		got, err := client.Get(ctx, "key").Bytes()
 		Expect(err).NotTo(HaveOccurred())
 		Expect(got).To(Equal(bigVal))
+	})
+
+	It("should set and scan time", func() {
+		tm := time.Now()
+		err := rdb.Set(ctx, "now", tm, 0).Err()
+		Expect(err).NotTo(HaveOccurred())
+
+		var tm2 time.Time
+		err = rdb.Get(ctx, "now").Scan(&tm2)
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(tm2).To(BeTemporally("==", tm))
+	})
+
+	It("should Conn", func() {
+		err := rdb.Conn(ctx).Get(ctx, "this-key-does-not-exist").Err()
+		Expect(err).To(Equal(redis.Nil))
 	})
 })
 
@@ -372,7 +389,7 @@ var _ = Describe("Client OnConnect", func() {
 	BeforeEach(func() {
 		opt := redisOptions()
 		opt.DB = 0
-		opt.OnConnect = func(cn *redis.Conn) error {
+		opt.OnConnect = func(ctx context.Context, cn *redis.Conn) error {
 			return cn.ClientSetName(ctx, "on_connect").Err()
 		}
 
@@ -387,5 +404,30 @@ var _ = Describe("Client OnConnect", func() {
 		name, err := client.ClientGetName(ctx).Result()
 		Expect(err).NotTo(HaveOccurred())
 		Expect(name).To(Equal("on_connect"))
+	})
+})
+
+var _ = Describe("Client context cancelation", func() {
+	var opt *redis.Options
+	var client *redis.Client
+
+	BeforeEach(func() {
+		opt = redisOptions()
+		opt.ReadTimeout = -1
+		opt.WriteTimeout = -1
+		client = redis.NewClient(opt)
+	})
+
+	AfterEach(func() {
+		Expect(client.Close()).NotTo(HaveOccurred())
+	})
+
+	It("Blocking operation cancelation", func() {
+		ctx, cancel := context.WithCancel(ctx)
+		cancel()
+
+		err := client.BLPop(ctx, 1*time.Second, "test").Err()
+		Expect(err).To(HaveOccurred())
+		Expect(err).To(BeIdenticalTo(context.Canceled))
 	})
 })

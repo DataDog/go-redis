@@ -259,7 +259,7 @@ func BenchmarkClusterPing(b *testing.B) {
 	if err := startCluster(ctx, cluster); err != nil {
 		b.Fatal(err)
 	}
-	defer stopCluster(cluster)
+	defer cluster.Close()
 
 	client := cluster.newClusterClient(ctx, redisClusterOptions())
 	defer client.Close()
@@ -286,7 +286,7 @@ func BenchmarkClusterSetString(b *testing.B) {
 	if err := startCluster(ctx, cluster); err != nil {
 		b.Fatal(err)
 	}
-	defer stopCluster(cluster)
+	defer cluster.Close()
 
 	client := cluster.newClusterClient(ctx, redisClusterOptions())
 	defer client.Close()
@@ -303,31 +303,6 @@ func BenchmarkClusterSetString(b *testing.B) {
 			}
 		}
 	})
-}
-
-func BenchmarkClusterReloadState(b *testing.B) {
-	if testing.Short() {
-		b.Skip("skipping in short mode")
-	}
-
-	ctx := context.Background()
-	cluster := newClusterScenario()
-	if err := startCluster(ctx, cluster); err != nil {
-		b.Fatal(err)
-	}
-	defer stopCluster(cluster)
-
-	client := cluster.newClusterClient(ctx, redisClusterOptions())
-	defer client.Close()
-
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
-		err := client.ReloadState(ctx)
-		if err != nil {
-			b.Fatal(err)
-		}
-	}
 }
 
 var clusterSink *redis.ClusterClient
