@@ -11,7 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cespare/xxhash/v2"
+	"github.com/cespare/xxhash"
 	"github.com/dgryski/go-rendezvous"
 	"github.com/go-redis/redis/internal"
 	"github.com/go-redis/redis/internal/hashtag"
