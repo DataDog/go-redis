@@ -7,8 +7,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/go-redis/redis/v8/internal"
-	"github.com/go-redis/redis/v8/internal/proto"
+	"github.com/go-redis/redis/internal"
+	"github.com/go-redis/redis/internal/proto"
 	"go.opentelemetry.io/otel/api/trace"
 )
 

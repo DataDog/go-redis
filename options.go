@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-redis/redis/v8/internal"
-	"github.com/go-redis/redis/v8/internal/pool"
+	"github.com/go-redis/redis/internal"
+	"github.com/go-redis/redis/internal/pool"
 	"go.opentelemetry.io/otel/api/trace"
 	"go.opentelemetry.io/otel/label"
 )
