@@ -35,13 +35,20 @@ const (
 	sentinelMasterPort = "9123"
 	sentinelSlave1Port = "9124"
 	sentinelSlave2Port = "9125"
-	sentinelPort       = "9126"
+	sentinelPort1      = "9126"
+	sentinelPort2      = "9127"
+	sentinelPort3      = "9128"
 )
 
 var (
-	redisMain                                                *redisProcess
-	ringShard1, ringShard2, ringShard3                       *redisProcess
-	sentinelMaster, sentinelSlave1, sentinelSlave2, sentinel *redisProcess
+	sentinelAddrs = []string{":" + sentinelPort1, ":" + sentinelPort2, ":" + sentinelPort3}
+
+	processes map[string]*redisProcess
+
+	redisMain                                      *redisProcess
+	ringShard1, ringShard2, ringShard3             *redisProcess
+	sentinelMaster, sentinelSlave1, sentinelSlave2 *redisProcess
+	sentinel1, sentinel2, sentinel3                *redisProcess
 )
 
 var cluster = &clusterScenario{
@@ -49,6 +56,13 @@ var cluster = &clusterScenario{
 	nodeIDs:   make([]string, 6),
 	processes: make(map[string]*redisProcess, 6),
 	clients:   make(map[string]*redis.Client, 6),
+}
+
+func registerProcess(port string, p *redisProcess) {
+	if processes == nil {
+		processes = make(map[string]*redisProcess)
+	}
+	processes[port] = p
 }
 
 var _ = BeforeSuite(func() {
@@ -69,7 +83,13 @@ var _ = BeforeSuite(func() {
 	sentinelMaster, err = startRedis(sentinelMasterPort)
 	Expect(err).NotTo(HaveOccurred())
 
-	sentinel, err = startSentinel(sentinelPort, sentinelName, sentinelMasterPort)
+	sentinel1, err = startSentinel(sentinelPort1, sentinelName, sentinelMasterPort)
+	Expect(err).NotTo(HaveOccurred())
+
+	sentinel2, err = startSentinel(sentinelPort2, sentinelName, sentinelMasterPort)
+	Expect(err).NotTo(HaveOccurred())
+
+	sentinel3, err = startSentinel(sentinelPort3, sentinelName, sentinelMasterPort)
 	Expect(err).NotTo(HaveOccurred())
 
 	sentinelSlave1, err = startRedis(
@@ -84,18 +104,12 @@ var _ = BeforeSuite(func() {
 })
 
 var _ = AfterSuite(func() {
-	Expect(redisMain.Close()).NotTo(HaveOccurred())
+	Expect(cluster.Close()).NotTo(HaveOccurred())
 
-	Expect(ringShard1.Close()).NotTo(HaveOccurred())
-	Expect(ringShard2.Close()).NotTo(HaveOccurred())
-	Expect(ringShard3.Close()).NotTo(HaveOccurred())
-
-	Expect(sentinel.Close()).NotTo(HaveOccurred())
-	Expect(sentinelSlave1.Close()).NotTo(HaveOccurred())
-	Expect(sentinelSlave2.Close()).NotTo(HaveOccurred())
-	Expect(sentinelMaster.Close()).NotTo(HaveOccurred())
-
-	Expect(stopCluster(cluster)).NotTo(HaveOccurred())
+	for _, p := range processes {
+		Expect(p.Close()).NotTo(HaveOccurred())
+	}
+	processes = nil
 })
 
 func TestGinkgoSuite(t *testing.T) {
@@ -107,11 +121,15 @@ func TestGinkgoSuite(t *testing.T) {
 
 func redisOptions() *redis.Options {
 	return &redis.Options{
-		Addr:               redisAddr,
-		DB:                 15,
-		DialTimeout:        10 * time.Second,
-		ReadTimeout:        30 * time.Second,
-		WriteTimeout:       30 * time.Second,
+		Addr: redisAddr,
+		DB:   15,
+
+		DialTimeout:  10 * time.Second,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 30 * time.Second,
+
+		MaxRetries: -1,
+
 		PoolSize:           10,
 		PoolTimeout:        30 * time.Second,
 		IdleTimeout:        time.Minute,
@@ -121,9 +139,12 @@ func redisOptions() *redis.Options {
 
 func redisClusterOptions() *redis.ClusterOptions {
 	return &redis.ClusterOptions{
-		DialTimeout:        10 * time.Second,
-		ReadTimeout:        30 * time.Second,
-		WriteTimeout:       30 * time.Second,
+		DialTimeout:  10 * time.Second,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 30 * time.Second,
+
+		MaxRedirects: 8,
+
 		PoolSize:           10,
 		PoolTimeout:        30 * time.Second,
 		IdleTimeout:        time.Minute,
@@ -137,9 +158,13 @@ func redisRingOptions() *redis.RingOptions {
 			"ringShardOne": ":" + ringShard1Port,
 			"ringShardTwo": ":" + ringShard2Port,
 		},
-		DialTimeout:        10 * time.Second,
-		ReadTimeout:        30 * time.Second,
-		WriteTimeout:       30 * time.Second,
+
+		DialTimeout:  10 * time.Second,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 30 * time.Second,
+
+		MaxRetries: -1,
+
 		PoolSize:           10,
 		PoolTimeout:        30 * time.Second,
 		IdleTimeout:        time.Minute,
@@ -219,7 +244,8 @@ func execCmd(name string, args ...string) (*os.Process, error) {
 
 func connectTo(port string) (*redis.Client, error) {
 	client := redis.NewClient(&redis.Options{
-		Addr: ":" + port,
+		Addr:       ":" + port,
+		MaxRetries: -1,
 	})
 
 	err := eventually(func() error {
@@ -295,7 +321,10 @@ func startRedis(port string, args ...string) (*redisProcess, error) {
 		process.Kill()
 		return nil, err
 	}
-	return &redisProcess{process, client}, err
+
+	p := &redisProcess{process, client}
+	registerProcess(port, p)
+	return p, err
 }
 
 func startSentinel(port, masterName, masterPort string) (*redisProcess, error) {
@@ -303,17 +332,20 @@ func startSentinel(port, masterName, masterPort string) (*redisProcess, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	process, err := execCmd(redisServerBin, os.DevNull, "--sentinel", "--port", port, "--dir", dir)
 	if err != nil {
 		return nil, err
 	}
+
 	client, err := connectTo(port)
 	if err != nil {
 		process.Kill()
 		return nil, err
 	}
+
 	for _, cmd := range []*redis.StatusCmd{
-		redis.NewStatusCmd(ctx, "SENTINEL", "MONITOR", masterName, "127.0.0.1", masterPort, "1"),
+		redis.NewStatusCmd(ctx, "SENTINEL", "MONITOR", masterName, "127.0.0.1", masterPort, "2"),
 		redis.NewStatusCmd(ctx, "SENTINEL", "SET", masterName, "down-after-milliseconds", "500"),
 		redis.NewStatusCmd(ctx, "SENTINEL", "SET", masterName, "failover-timeout", "1000"),
 		redis.NewStatusCmd(ctx, "SENTINEL", "SET", masterName, "parallel-syncs", "1"),
@@ -324,7 +356,10 @@ func startSentinel(port, masterName, masterPort string) (*redisProcess, error) {
 			return nil, err
 		}
 	}
-	return &redisProcess{process, client}, nil
+
+	p := &redisProcess{process, client}
+	registerProcess(port, p)
+	return p, nil
 }
 
 //------------------------------------------------------------------------------
@@ -332,7 +367,7 @@ func startSentinel(port, masterName, masterPort string) (*redisProcess, error) {
 type badConnError string
 
 func (e badConnError) Error() string   { return string(e) }
-func (e badConnError) Timeout() bool   { return false }
+func (e badConnError) Timeout() bool   { return true }
 func (e badConnError) Temporary() bool { return false }
 
 type badConn struct {
