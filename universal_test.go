@@ -4,7 +4,7 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
-	"github.com/go-redis/redis/v7"
+	"github.com/DataDog/redis/v7"
 )
 
 var _ = Describe("UniversalClient", func() {
