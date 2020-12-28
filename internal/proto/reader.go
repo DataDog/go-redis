@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/DataDog/redis/v7/internal/util"
+	"github.com/DataDog/go-redis/v7/internal/util"
 )
 
 const (

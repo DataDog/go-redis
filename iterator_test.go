@@ -3,7 +3,7 @@ package redis_test
 import (
 	"fmt"
 
-	"github.com/DataDog/redis/v7"
+	"github.com/DataDog/go-redis/v7"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"

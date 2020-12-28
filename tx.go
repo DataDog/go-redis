@@ -3,8 +3,8 @@ package redis
 import (
 	"context"
 
-	"github.com/DataDog/redis/v7/internal/pool"
-	"github.com/DataDog/redis/v7/internal/proto"
+	"github.com/DataDog/go-redis/v7/internal/pool"
+	"github.com/DataDog/go-redis/v7/internal/proto"
 )
 
 // TxFailedErr transaction redis failed.

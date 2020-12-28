@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DataDog/redis/v7"
+	"github.com/DataDog/go-redis/v7"
 )
 
 func benchmarkRedisClient(poolSize int) *redis.Client {

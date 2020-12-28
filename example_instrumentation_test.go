@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/DataDog/redis/v7"
+	"github.com/DataDog/go-redis/v7"
 )
 
 type redisHook struct{}
